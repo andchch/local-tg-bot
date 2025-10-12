@@ -23,6 +23,9 @@ build/
 data/*.db
 data/*.db-*
 
+# Backups
+backups/
+
 # IDE
 .vscode/
 .idea/
@@ -33,6 +36,11 @@ data/*.db-*
 # Logs
 *.log
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -40,6 +48,4 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 
-
-bot/consts.py
 CLAUDE.md

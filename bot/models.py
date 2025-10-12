@@ -35,6 +35,39 @@ class Message(Base):
         )
 
 
+class ProfanityStat(Base):
+    __tablename__ = "profanity_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    profanity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_updated: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+
+    __table_args__ = (
+        Index('idx_profanity_chat_user', 'chat_id', 'user_id', unique=True),
+        Index('idx_profanity_chat_count', 'chat_id', 'profanity_count'),
+    )
+
+
+class QuizScore(Base):
+    __tablename__ = "quiz_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    correct_answers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_games: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_played: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+
+    __table_args__ = (
+        Index('idx_quiz_chat_user', 'chat_id', 'user_id', unique=True),
+        Index('idx_quiz_chat_score', 'chat_id', 'correct_answers'),
+    )
+
+
 @dataclass
 class ChatMessage:
     user_id: int
