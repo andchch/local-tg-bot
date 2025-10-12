@@ -18,6 +18,10 @@ class Config:
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
     YANDEX_MODEL: str = os.getenv("YANDEX_MODEL", "")
 
+    YANDEX_SPEECHKIT_API_KEY: str = os.getenv("YANDEX_SPEECHKIT_API_KEY", "")
+    SPEECHKIT_MODEL: str = os.getenv("SPEECHKIT_MODEL", "general")
+    SPEECHKIT_LANGUAGE: str = os.getenv("SPEECHKIT_LANGUAGE", "ru-RU")
+
     DB_PATH: str = os.getenv("DB_PATH", "data/messages.db")
 
     DEFAULT_SUMMARY_HOURS: int = int(os.getenv("DEFAULT_SUMMARY_HOURS", "24"))
@@ -36,12 +40,15 @@ class Config:
 
         if cls.AI_PROVIDER == "anthropic" and not cls.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY is not set for Anthropic provider")
-        
+
         if cls.AI_PROVIDER == "yagpt" and not cls.YANDEX_API_KEY:
             raise ValueError("YANDEX_API_KEY is not set for Yandex provider")
 
         if cls.AI_PROVIDER not in ["openai", "anthropic", "yagpt"]:
             raise ValueError(f"Invalid AI_PROVIDER: {cls.AI_PROVIDER}. Must be 'openai' or 'anthropic' or 'yagpt'")
+
+        if not cls.YANDEX_SPEECHKIT_API_KEY:
+            raise ValueError("YANDEX_SPEECHKIT_API_KEY is not set in environment variables")
 
         return True
 

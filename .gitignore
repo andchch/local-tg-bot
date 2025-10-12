@@ -8,6 +8,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 ENV/
 *.egg-info/
@@ -40,4 +41,5 @@ Thumbs.db
 docker-compose.override.yml
 
 
-bot/users.py
+bot/consts.py
+CLAUDE.md

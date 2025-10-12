@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
 from sqlalchemy import select, func, delete
-from typing import List
+from typing import List, Optional
 
 from models import ChatMessage, Message, Base
 
@@ -36,14 +36,15 @@ class Database:
         self,
         user_id: int,
         username: str,
-        message_text: str
+        message_text: str,
+        ts: Optional[datetime] = None
     ):
         async with self.async_session() as session:
             message = Message(
                 user_id=user_id,
                 username=username,
                 message_text=message_text,
-                timestamp=datetime.now()
+                timestamp=datetime.now() if not ts else ts
             )
             session.add(message)
             await session.commit()
@@ -69,7 +70,7 @@ class Database:
             logger.info(f"Retrieved {len(chat_messages)} messages from chat {chat_id} for last {hours} hours")
             return chat_messages
 
-    async def get_message_count(self) -> int:
+    async def get_message_count(self, chat_id: int = None) -> int:
         async with self.async_session() as session:
             stmt = select(func.count()).select_from(Message)
             result = await session.execute(stmt)

@@ -45,11 +45,11 @@ class ChatMessage:
         self.timestamp = timestamp
 
     def get_display_name(self) -> str:
-        return f"@{self.username}"
+        return self.username
         
 
     def format_for_summary(self) -> str:
-        time_str = self.timestamp.strftime("%Y-%m-%d %H:%M")
+        time_str = self.timestamp.strftime("%Y-%m-%d %H:%M:%S")
         display_name = self.get_display_name()
         return f"[{time_str}] {display_name}: {self.message_text}"
 
