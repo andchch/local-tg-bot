@@ -11,23 +11,17 @@ from database import Database
 from summarizer import Summarizer
 from transcription import Transcriber
 from config import Config
-from consts import KNOWN_USERS, ALLOWED_CHAT_ID, tags, h_m
+from consts import ANIME_TAGS, NSFW_EMOJI_TRIGGERS
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 
-db = Database(Config.DB_PATH)
-summarizer = Summarizer()
-transcriber = Transcriber()
-
-
-def is_access_allowed(message: Message) -> bool:
-    return abs(message.chat.id) in ALLOWED_CHAT_ID or abs(message.chat.id) in KNOWN_USERS.keys()
+KNOWN_USERS = Config.get_known_users()
 
 
 def get_username(message: Message) -> str:
-    if message.from_user.id in KNOWN_USERS.keys():
+    if message.from_user.id in KNOWN_USERS:
         return KNOWN_USERS[message.from_user.id]
     if message.from_user.username:
         return message.from_user.username
@@ -35,20 +29,12 @@ def get_username(message: Message) -> str:
 
 
 @router.message(Command("start"))
-async def cmd_start(message: Message):
-    if not is_access_allowed(message):
-        await message.answer(Messages.error_not_allowed_chat())
-        return
-
+async def cmd_start(message: Message) -> None:
     await message.answer(Messages.welcome())
 
 
 @router.message(Command("summary"))
-async def cmd_summary(message: Message):
-    if not is_access_allowed(message):
-        await message.answer(Messages.error_not_allowed_chat())
-        return
-
+async def cmd_summary(message: Message, db: Database, summarizer: Summarizer) -> None:
     if message.chat.type not in ["group", "supergroup"]:
         await message.answer(Messages.error_group_only())
         return
@@ -97,11 +83,7 @@ async def cmd_summary(message: Message):
 
 
 @router.message(Command("stats"))
-async def cmd_stats(message: Message):
-    if not is_access_allowed(message):
-        await message.answer(Messages.error_not_allowed_chat())
-        return
-
+async def cmd_stats(message: Message, db: Database) -> None:
     if message.chat.type not in ["group", "supergroup"]:
         await message.answer(Messages.error_group_only())
         return
@@ -120,17 +102,13 @@ async def cmd_stats(message: Message):
 
 
 @router.message(F.text)
-async def handle_message(message: Message):
-    if not is_access_allowed(message):
-        await message.answer(Messages.error_not_allowed_chat())
-        return
-
+async def handle_message(message: Message, db: Database) -> None:
     if message.chat.type not in ["group", "supergroup"]:
-        if h_m.intersection(set(message.text)):
-            await random_shit(message, True)
+        if NSFW_EMOJI_TRIGGERS.intersection(set(message.text)):
+            await send_anime_image(message, nsfw=True)
             return
         else:
-            await random_shit(message)
+            await send_anime_image(message, nsfw=False)
             return
 
     if message.text and message.text.startswith("/"):
@@ -147,6 +125,7 @@ async def handle_message(message: Message):
             user_id=message.from_user.id,
             message_text=message.text,
             username=username,
+            chat_id=message.chat.id,
             ts=ts
         )
 
@@ -157,13 +136,9 @@ async def handle_message(message: Message):
         
         
 @router.message(F.voice)
-async def handle_voice(message: Message, bot: Bot):
-    if not is_access_allowed(message):
-        await message.answer(Messages.error_not_allowed_chat())
-        return
-
+async def handle_voice(message: Message, bot: Bot, db: Database, transcriber: Transcriber) -> None:
     if message.chat.type not in ["group", "supergroup"]:
-        await random_shit(message)
+        await send_anime_image(message)
         return
 
     try:
@@ -179,6 +154,7 @@ async def handle_voice(message: Message, bot: Bot):
                 user_id=message.from_user.id,
                 message_text=text,
                 username=username,
+                chat_id=message.chat.id,
                 ts=ts
             )
             logger.debug(f"Saved transcribed audio message from {message.from_user.id} ({username}) in chat {message.chat.id}")
@@ -190,13 +166,9 @@ async def handle_voice(message: Message, bot: Bot):
 
 
 @router.message(F.video_note)
-async def handle_video_note(message: Message, bot: Bot):
-    if not is_access_allowed(message):
-        await message.answer(Messages.error_not_allowed_chat())
-        return
-
+async def handle_video_note(message: Message, bot: Bot, db: Database, transcriber: Transcriber) -> None:
     if message.chat.type not in ["group", "supergroup"]:
-        await random_shit(message)
+        await send_anime_image(message)
         return
 
     try:
@@ -212,6 +184,7 @@ async def handle_video_note(message: Message, bot: Bot):
                 user_id=message.from_user.id,
                 message_text=text,
                 username=username,
+                chat_id=message.chat.id,
                 ts=ts
             )
             logger.debug(f"Saved transcribed circle message from {message.from_user.id} ({username}) in chat {message.chat.id}")
@@ -222,20 +195,23 @@ async def handle_video_note(message: Message, bot: Bot):
         logger.error(f"Error processing video note: {e}", exc_info=True)
         
         
-async def random_shit(message: Message, nsfw: bool = False):
-    if nsfw:
-        content_type = "nsfw"
-    else:
-        content_type = "sfw"
-
-    cat = random.choice(tags[content_type])
+async def send_anime_image(message: Message, nsfw: bool = False) -> None:
+    content_type = "nsfw" if nsfw else "sfw"
+    category = random.choice(ANIME_TAGS[content_type])
 
     async with httpx.AsyncClient() as client:
-        r = await client.get(f'https://api.waifu.pics/{content_type}/{cat}')
+        try:
+            response = await client.get(f'https://api.waifu.pics/{content_type}/{category}')
 
-        if r.status_code == 200:
-            data = r.json()
-            image_url = data.get('url')
-            await message.answer_photo(photo=image_url)
-        else:
+            if response.status_code == 200:
+                data = response.json()
+                image_url = data.get('url')
+                if image_url:
+                    await message.answer_photo(photo=image_url)
+                else:
+                    await message.answer("Zzz 😴😴😴")
+            else:
+                await message.answer("Zzz 😴😴😴")
+        except Exception as e:
+            logger.error(f"Error fetching anime image: {e}", exc_info=True)
             await message.answer("Zzz 😴😴😴")

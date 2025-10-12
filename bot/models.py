@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional
 from sqlalchemy import String, Integer, DateTime, Text, Index
@@ -13,6 +14,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     username: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     message_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -20,6 +22,7 @@ class Message(Base):
 
     __table_args__ = (
         Index('idx_timestamp', 'timestamp'),
+        Index('idx_chat_timestamp', 'chat_id', 'timestamp'),
     )
 
     def to_chat_message(self) -> "ChatMessage":
@@ -27,26 +30,21 @@ class Message(Base):
             user_id=self.user_id,
             username=self.username,
             message_text=self.message_text,
-            timestamp=self.timestamp
+            timestamp=self.timestamp,
+            chat_id=self.chat_id
         )
 
 
+@dataclass
 class ChatMessage:
-    def __init__(
-        self,
-        user_id: int,
-        message_text: str,
-        timestamp: datetime,
-        username: Optional[str] = None
-    ):
-        self.user_id = user_id
-        self.username = username
-        self.message_text = message_text
-        self.timestamp = timestamp
+    user_id: int
+    message_text: str
+    timestamp: datetime
+    username: Optional[str] = None
+    chat_id: Optional[int] = None
 
     def get_display_name(self) -> str:
-        return self.username
-        
+        return self.username if self.username else f"User{self.user_id}"
 
     def format_for_summary(self) -> str:
         time_str = self.timestamp.strftime("%Y-%m-%d %H:%M:%S")
@@ -65,7 +63,8 @@ class ChatMessage:
             user_id=data['user_id'],
             message_text=data['message_text'],
             timestamp=timestamp,
-            username=data.get('username')
+            username=data.get('username'),
+            chat_id=data.get('chat_id')
         )
 
     def to_dict(self) -> Dict:
@@ -74,10 +73,8 @@ class ChatMessage:
             'username': self.username,
             'message_text': self.message_text,
             'timestamp': self.timestamp,
+            'chat_id': self.chat_id,
         }
 
     def __str__(self) -> str:
         return self.format_for_summary()
-
-    def __repr__(self) -> str:
-        return f"ChatMessage(user_id={self.user_id}, text='{self.message_text[:30]}...', timestamp={self.timestamp})"

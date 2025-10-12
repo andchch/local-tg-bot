@@ -27,7 +27,7 @@ class Database:
             class_=AsyncSession
         )
 
-    async def init_db(self):
+    async def init_db(self) -> None:
         async with self.async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database initialized successfully")
@@ -37,10 +37,12 @@ class Database:
         user_id: int,
         username: str,
         message_text: str,
+        chat_id: int,
         ts: Optional[datetime] = None
-    ):
+    ) -> None:
         async with self.async_session() as session:
             message = Message(
+                chat_id=chat_id,
                 user_id=user_id,
                 username=username,
                 message_text=message_text,
@@ -48,7 +50,7 @@ class Database:
             )
             session.add(message)
             await session.commit()
-            logger.debug(f"Saved message from user {user_id}")
+            logger.debug(f"Saved message from user {user_id} in chat {chat_id}")
 
     async def get_messages_since(
         self,
@@ -59,6 +61,7 @@ class Database:
 
         async with self.async_session() as session:
             stmt = select(Message).where(
+                Message.chat_id == chat_id,
                 Message.timestamp >= since_time
             ).order_by(Message.timestamp.asc())
 
@@ -70,9 +73,11 @@ class Database:
             logger.info(f"Retrieved {len(chat_messages)} messages from chat {chat_id} for last {hours} hours")
             return chat_messages
 
-    async def get_message_count(self, chat_id: int = None) -> int:
+    async def get_message_count(self, chat_id: Optional[int] = None) -> int:
         async with self.async_session() as session:
             stmt = select(func.count()).select_from(Message)
+            if chat_id is not None:
+                stmt = stmt.where(Message.chat_id == chat_id)
             result = await session.execute(stmt)
             count = result.scalar()
             return count if count else 0
@@ -89,6 +94,6 @@ class Database:
             logger.info(f"Cleaned up {deleted_count} old messages (older than {days} days)")
             return deleted_count
 
-    async def close(self):
+    async def close(self) -> None:
         await self.async_engine.dispose()
         logger.info("Database connections closed")

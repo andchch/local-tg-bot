@@ -1,12 +1,16 @@
 import asyncio
 import logging
 import sys
-from aiogram import Bot, Dispatcher
+from typing import Any, Callable, Dict, Awaitable
+from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import TelegramObject
 
 from config import Config
 from database import Database
+from summarizer import Summarizer
+from transcription import Transcriber
 from handlers import router
 
 
@@ -21,24 +25,69 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def on_startup(bot: Bot, db: Database):
+class AccessControlMiddleware(BaseMiddleware):
+    def __init__(self, allowed_users: set, allowed_chats: set):
+        super().__init__()
+        self.allowed_users = allowed_users
+        self.allowed_chats = allowed_chats
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        from aiogram.types import Message
+        from messages import Messages
+
+        if isinstance(event, Message):
+            chat_id = abs(event.chat.id)
+            user_id = event.from_user.id if event.from_user else None
+
+            if chat_id not in self.allowed_chats and user_id not in self.allowed_users:
+                await event.answer(Messages.error_not_allowed_chat())
+                return  # Block further processing
+
+        return await handler(event, data)
+
+
+class DependencyInjectionMiddleware(BaseMiddleware):
+    def __init__(self, db: Database, summarizer: Summarizer, transcriber: Transcriber):
+        super().__init__()
+        self.db = db
+        self.summarizer = summarizer
+        self.transcriber = transcriber
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        data["db"] = self.db
+        data["summarizer"] = self.summarizer
+        data["transcriber"] = self.transcriber
+        return await handler(event, data)
+
+
+async def on_startup(bot: Bot, db: Database) -> None:
     logger.info("Starting bot...")
 
     await db.init_db()
     bot_info = await bot.get_me()
-    
+
     logger.info(f"Bot started: @{bot_info.username} (ID: {bot_info.id})")
     logger.info(f"AI Provider: {Config.AI_PROVIDER}")
     logger.info(f"Database: {Config.DB_PATH}")
     logger.info(f"Default summary hours: {Config.DEFAULT_SUMMARY_HOURS}")
 
 
-async def on_shutdown(bot: Bot):
+async def on_shutdown(bot: Bot) -> None:
     logger.info("Shutting down bot...")
     await bot.session.close()
 
 
-async def main():
+async def main() -> None:
     try:
         Config.validate()
 
@@ -47,9 +96,19 @@ async def main():
             default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
         )
 
-        dp = Dispatcher()
-        dp.include_router(router)
         db = Database(Config.DB_PATH)
+        summarizer = Summarizer()
+        transcriber = Transcriber()
+
+        dp = Dispatcher()
+
+        allowed_users = set(Config.get_known_users().keys())
+        allowed_chats = set(Config.get_allowed_chat_ids())
+        dp.message.middleware(AccessControlMiddleware(allowed_users, allowed_chats))
+
+        dp.message.middleware(DependencyInjectionMiddleware(db, summarizer, transcriber))
+
+        dp.include_router(router)
 
         await on_startup(bot, db)
 
