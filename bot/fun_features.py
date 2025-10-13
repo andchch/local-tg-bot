@@ -1,7 +1,13 @@
 import random
 from typing import List, Tuple
-from messages import Messages
+import logging
+import httpx
+from aiogram.types import Message
 
+from messages import Messages
+from consts import ANIME_TAGS
+
+logger = logging.getLogger(__name__)
 
 def magic_ball() -> str:
     answers = Messages.magic_ball_answers()
@@ -33,3 +39,25 @@ def rate_text(text: str) -> Tuple[int, str]:
         comment = rng.choice(comments_dict["9-10"])
 
     return score, comment
+
+
+async def send_anime_image(message: Message, nsfw: bool = False) -> None:
+    content_type = "nsfw" if nsfw else "sfw"
+    category = random.choice(ANIME_TAGS[content_type])
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f'https://api.waifu.pics/{content_type}/{category}')
+
+            if response.status_code == 200:
+                data = response.json()
+                image_url = data.get('url')
+                if image_url:
+                    await message.answer_photo(photo=image_url)
+                else:
+                    await message.answer("Zzz 😴😴😴")
+            else:
+                await message.answer("Zzz 😴😴😴")
+        except Exception as e:
+            logger.error(f"Error fetching anime image: {e}", exc_info=True)
+            await message.answer("Zzz 😴😴😴")

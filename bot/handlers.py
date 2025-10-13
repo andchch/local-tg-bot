@@ -3,16 +3,14 @@ import logging
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-import httpx
-import random
 
 from messages import Messages
 from database import Database
 from summarizer import Summarizer
 from transcription import Transcriber
 from config import Config
-from consts import ANIME_TAGS, NSFW_EMOJI_TRIGGERS
-from fun_features import magic_ball, pick_random_person, rate_text
+from consts import NSFW_EMOJI_TRIGGERS
+from fun_features import magic_ball, pick_random_person, rate_text, send_anime_image
 from profanity import count_profanity, get_toxicity_title
 from games import create_quiz_question
 
@@ -322,27 +320,48 @@ async def handle_message(message: Message, db: Database) -> None:
         return
 
     try:
-        username = get_username(message)
-        ts = datetime.now()
+        if message.forward_from:
+            if message.forward_from.id in KNOWN_USERS.keys():
+                username = KNOWN_USERS[message.forward_from.id]
+            elif message.forward_from.first_name:
+                username = message.forward_from.first_name
+            else:
+                username = message.forward_from.username
 
-        await db.save_message(
-            user_id=message.from_user.id,
-            message_text=message.text,
-            username=username,
-            chat_id=message.chat.id,
-            ts=ts
-        )
+            ts = datetime.now()
 
-        profanity_count = count_profanity(message.text)
-        if profanity_count > 0:
-            await db.update_profanity_count(
-                user_id=message.from_user.id,
+            text = f'{KNOWN_USERS[message.from_user.id]} переслал сообщение от {username} c текстом: {message.text}'
+
+            await db.save_message(
+                user_id=message.forward_from.id,
+                message_text=text,
                 username=username,
                 chat_id=message.chat.id,
-                count=profanity_count
+                ts=ts
             )
 
-        logger.debug(f"Saved message from {message.from_user.id} ({username}) in chat {message.chat.id}")
+        else:
+            username = get_username(message)
+            ts = datetime.now()
+
+            await db.save_message(
+                user_id=message.from_user.id,
+                message_text=message.text,
+                username=username,
+                chat_id=message.chat.id,
+                ts=ts
+            )
+
+            profanity_count = count_profanity(message.text)
+            if profanity_count > 0:
+                await db.update_profanity_count(
+                    user_id=message.from_user.id,
+                    username=username,
+                    chat_id=message.chat.id,
+                    count=profanity_count
+                )
+
+            logger.debug(f"Saved message from {message.from_user.id} ({username}) in chat {message.chat.id}")
 
     except Exception as e:
         logger.error(f"Error saving message: {e}", exc_info=True)
@@ -370,6 +389,15 @@ async def handle_voice(message: Message, bot: Bot, db: Database, transcriber: Tr
                 chat_id=message.chat.id,
                 ts=ts
             )
+
+            profanity_count = count_profanity(text)
+            if profanity_count > 0:
+                await db.update_profanity_count(
+                    user_id=message.from_user.id,
+                    username=username,
+                    chat_id=message.chat.id,
+                    count=profanity_count
+                )
             logger.debug(f"Saved transcribed audio message from {message.from_user.id} ({username}) in chat {message.chat.id}")
         else:
             logger.warning(f"Failed to transcribe audio from {message.from_user.id} in chat {message.chat.id}")
@@ -400,31 +428,39 @@ async def handle_video_note(message: Message, bot: Bot, db: Database, transcribe
                 chat_id=message.chat.id,
                 ts=ts
             )
+
+            profanity_count = count_profanity(text)
+            if profanity_count > 0:
+                await db.update_profanity_count(
+                    user_id=message.from_user.id,
+                    username=username,
+                    chat_id=message.chat.id,
+                    count=profanity_count
+                )
             logger.debug(f"Saved transcribed circle message from {message.from_user.id} ({username}) in chat {message.chat.id}")
         else:
             logger.warning(f"Failed to transcribe video note from {message.from_user.id} in chat {message.chat.id}")
 
     except Exception as e:
         logger.error(f"Error processing video note: {e}", exc_info=True)
-        
-        
-async def send_anime_image(message: Message, nsfw: bool = False) -> None:
-    content_type = "nsfw" if nsfw else "sfw"
-    category = random.choice(ANIME_TAGS[content_type])
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(f'https://api.waifu.pics/{content_type}/{category}')
 
-            if response.status_code == 200:
-                data = response.json()
-                image_url = data.get('url')
-                if image_url:
-                    await message.answer_photo(photo=image_url)
-                else:
-                    await message.answer("Zzz 😴😴😴")
-            else:
-                await message.answer("Zzz 😴😴😴")
-        except Exception as e:
-            logger.error(f"Error fetching anime image: {e}", exc_info=True)
-            await message.answer("Zzz 😴😴😴")
+@router.message(F.photo)
+async def handle_photo(message: Message, db: Database) -> None:
+    if message.chat.type not in ["group", "supergroup"]:
+        await send_anime_image(message)
+        return
+    try:
+        username = get_username(message)
+        ts = datetime.now()
+
+        await db.save_message(
+            user_id=message.from_user.id,
+            message_text="(прислал какое-то изображение)",
+            username=username,
+            chat_id=message.chat.id,
+            ts=ts
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing photo: {e}", exc_info=True)
