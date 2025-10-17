@@ -41,5 +41,5 @@ jobs:
           script: |
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /home/daniil/topbot
-            docker compose pull bot
-            docker compose up -d bot
+            sudo docker compose pull bot
+            sudo docker compose up -d bot
