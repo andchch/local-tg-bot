@@ -1,6 +1,6 @@
 services:
   bot:
-    image: ghcr.io/andchch/local-tg-bot:latest
+    image: ghcr.io/andchch/local-tg-bot/bot:latest
     container_name: topbot
     restart: unless-stopped
     env_file:
