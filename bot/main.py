@@ -66,8 +66,10 @@ async def main() -> None:
         allowed_users = set(Config.get_known_users().keys())
         allowed_chats = set(Config.get_allowed_chat_ids())
         dp.message.middleware(AccessControlMiddleware(allowed_users, allowed_chats))
+        dp.callback_query.middleware(AccessControlMiddleware(allowed_users, allowed_chats))
 
         dp.message.middleware(DependencyInjectionMiddleware(db, summarizer, transcriber))
+        dp.callback_query.middleware(DependencyInjectionMiddleware(db, summarizer, transcriber))
 
         dp.include_router(router)
 
